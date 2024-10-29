@@ -43,6 +43,18 @@ class CenterDrive(Node):
             elif x > 0:  # Right of the wheelchair
                 right_points.append(abs(x))
 
+            if y < 1:
+                joystick_msg.forward_back = 0
+                joystick_msg.left_right = 0
+
+                self.get_logger().error("Stopping Wheelchair, too close to forward wall!")
+
+                self.joystick_publisher.publish(joystick_msg)
+                return
+
+
+
+
         if not left_points or not right_points:
             self.get_logger().warn("Could not detect both walls!")
             return
@@ -57,6 +69,8 @@ class CenterDrive(Node):
 
         joystick_msg.forward_back = FORWARD_MAX/2
         joystick_msg.left_right = control_signal
+
+        self.joystick_publisher.publish(joystick_msg)
 
 def main(args=None):
     rclpy.init(args=args)

@@ -14,12 +14,13 @@ RIGHT_MAX = 100
 class CenterDrive(Node):
     def __init__(self):
         super().__init__('center_drive_node')
+        print('Starting Node')
 
-        self.joystick_publisher = self.create_publisher(LuciJoystick, 'luci/remote_joystick', 10)
+        self.joystick_publisher = self.create_publisher(LuciJoystick, '/luci/remote_joystick', 10)
 
-        self.mode_publisher = self.create_publisher(LuciDriveMode, 'luci/drive_mode', 1)
+        self.mode_publisher = self.create_publisher(LuciDriveMode, '/luci/drive_mode', 1)
 
-        self.collision_subscriber = self.create_subscription(PointCloud2, "/collision", self.collision_callback, 10)
+        self.collision_subscriber = self.create_subscription(PointCloud2, "/luci/radar_points", self.collision_callback, 10)
 
         self.kp, self.kd, self.ki = 0.1, 0 ,0
 
@@ -27,30 +28,37 @@ class CenterDrive(Node):
 
 
     def collision_callback(self, msg):
+        # print('collision callback found')
+
+        # self.get_logger().info(msg)
+        # print(msg)
         left_points = []
         right_points = []
 
         joystick_msg = LuciJoystick()
 
         points = read_points(msg, field_names=("x", "y", "z"), skip_nans=True)
+        # print(points)
 
         for point in points:
-            x, y, z = point[:3]
-            print(f"Point: x={x}, y={y}, z={z}")
+            x, y, z = point[0], point[1], point[2]
+            # print(f"x: {x}, Y: {y}, Z: {z}")
+            # print(f"Point: x={x}, y={y}, z={z}")
 
             if x < 0:  # Left of the wheelchair
                 left_points.append(abs(x))
             elif x > 0:  # Right of the wheelchair
                 right_points.append(abs(x))
 
-            if y < 1:
-                joystick_msg.forward_back = 0
-                joystick_msg.left_right = 0
+            # if y < 1:
+            #     joystick_msg.forward_back = 0
+            #     joystick_msg.left_right = 0
 
-                self.get_logger().error("Stopping Wheelchair, too close to forward wall!")
+            #     self.get_logger().error("Stopping Wheelchair, too close to forward wall!")
 
-                self.joystick_publisher.publish(joystick_msg)
-                return
+            #     self.joystick_publisher.publish(joystick_msg)
+            #     return
+
 
 
 
@@ -65,10 +73,16 @@ class CenterDrive(Node):
         error = right_dist - left_dist
         control_signal = self.kp * error
 
+        if error > 0:
+            joystick_msg.left_right = int(RIGHT_MAX/2)
+        else:
+            joystick_msg.left_right = int(LEFT_MAX/2)
+
+        print(f"Error: {error}")
+
         self.get_logger().info(f"Error: {error}")
 
-        joystick_msg.forward_back = FORWARD_MAX/2
-        joystick_msg.left_right = control_signal
+        joystick_msg.forward_back = int(FORWARD_MAX/4)
 
         self.joystick_publisher.publish(joystick_msg)
 
@@ -88,4 +102,4 @@ def main(args=None):
     rclpy.shutdown()
 
 if __name__ == "__main__":
-    
+    main()

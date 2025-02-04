@@ -17,15 +17,21 @@ class CenterDrive(Node):
         print('Starting Node')
 
         self.joystick_publisher = self.create_publisher(LuciJoystick, '/luci/remote_joystick', 10)
-
         self.mode_publisher = self.create_publisher(LuciDriveMode, '/luci/drive_mode', 1)
-
         self.collision_subscriber = self.create_subscription(PointCloud2, "/luci/radar_points", self.collision_callback, 10)
 
         self.kp, self.kd, self.ki = 0.1, 0 ,0
 
+        # Publish to set drive mode to Auto - allows control via code 
+        mode_msg = LuciDriveMode()
+        mode_msg.mode = LuciDriveMode.AUTO
+        self.mode_publisher.publish(mode_msg)
 
-
+    def __del__(self):
+        # Set mode back to USER - will allow use of joystick
+        mode_msg = LuciDriveMode()
+        mode_msg.mode = LuciDriveMode.USER
+        self.mode_publisher.publish(mode_msg)
 
     def collision_callback(self, msg):
         # print('collision callback found')
@@ -89,14 +95,8 @@ class CenterDrive(Node):
 def main(args=None):
     rclpy.init(args=args)
     center_drive = CenterDrive()
-    mode_msg = LuciDriveMode()
-    mode_msg.mode = LuciDriveMode.AUTO
-    center_drive.mode_publisher.publish(mode_msg)
 
     rclpy.spin(center_drive)
-
-    mode_msg.mode = LuciDriveMode.USER
-    center_drive.mode_publisher.publish(mode_msg)
 
     center_drive.destroy_node()
     rclpy.shutdown()

@@ -1,113 +1,150 @@
+#!/usr/bin/env python3
+
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import TransformStamped
-from std_msgs.msg import Int32
+from sensor_msgs.msg import JointState
+from std_srvs.srv import Trigger
 import tf2_ros
 import math
-import time
-from std_srvs.srv import Trigger
-from sensor_msgs.msg import JointState
-from std_msgs.msg import Float64
 
 
 class OdomNode(Node):
     def __init__(self):
         super().__init__("odom_node", namespace="uwnre")
 
-        # ---- Declare parameters ----
-        # TODO: Find the correct values and update in the launch file
-        self.declare_parameter("wheel_radius", 0.16)          # meters
-        self.declare_parameter("wheel_base", 0.60)            # meters
-        self.declare_parameter("ticks_per_rev", 4096)
-        self.declare_parameter("publish_rate", 25.0)          # Hz
+        # ---- Parameters ----
+        self.declare_parameter("wheel_radius", 0.16)   # m
+        self.declare_parameter("wheel_base", 0.60)     # m
 
         self.wheel_radius = self.get_parameter("wheel_radius").value
         self.wheel_base = self.get_parameter("wheel_base").value
-        self.ticks_per_rev = self.get_parameter("ticks_per_rev").value
 
-        # Robot pose state
+        # Pose state
         self.x = 0.0
         self.y = 0.0
         self.theta = 0.0
 
-        # Previous angles for left and right wheels
-        self.prev_left_angle = 0.0
-        self.prev_right_angle = 0.0
+        # Previous wheel angles (in degrees, as published by wheel_angle_scaler)
+        self.prev_left_deg = None
+        self.prev_right_deg = None
 
-        # Initialize last_x and last_theta to avoid AttributeError
-        self.last_x = 0.0
-        self.last_theta = 0.0
-
-
+        # Time for velocity calc
+        self.last_time = None
 
         # Subscriber for scaled wheel angles
         self.angle_sub = self.create_subscription(
-            JointState, "scaled_wheel_angles", self.angle_callback, 10
+            JointState,
+            "scaled_wheel_angles",
+            self.angle_callback,
+            10
         )
 
-        # Publisher for odom
+        # Odometry publisher
         self.odom_pub = self.create_publisher(Odometry, "odom", 10)
 
         # TF broadcaster
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
 
-        # Service to reset odometry: call 'reset_odometry' (std_srvs/Trigger)
-        # The service clears x,y,theta and aligns previous tick samples so
-        # no large jump occurs after reset.
+        # Reset service
         self.reset_service = self.create_service(
-            Trigger, "reset_odometry", self.handle_reset_odometry
+            Trigger,
+            "reset_odometry",
+            self.handle_reset_odometry
         )
-
-        # Timer for odom publishing
-        dt = 1.0 / self.get_parameter("publish_rate").value
-        self.timer = self.create_timer(dt, self.update)
-
-        self.last_time = self.get_clock().now()
 
         self.get_logger().info("uwnre odom_node started")
 
-    # Function to normalize angles to the range [-pi, pi]
+    # Normalize angle to [-pi, pi]
     def normalize_angle(self, angle):
         while angle > math.pi:
-            angle -= 2 * math.pi
+            angle -= 2.0 * math.pi
         while angle < -math.pi:
-            angle += 2 * math.pi
+            angle += 2.0 * math.pi
         return angle
 
-    # ------------------- Service to reset odometry -------------------
-    def handle_reset_odometry(self, request, response):
-        """Service callback to reset odometry pose/state.
+    def unwrap_delta_deg(self, current_deg, prev_deg):
+        delta = current_deg - prev_deg
+        if delta > 180.0:
+            delta -= 360.0
+        elif delta < -180.0:
+            delta += 360.0
+        return delta
 
-        Uses std_srvs/Trigger: no request data. Returns success True and a message.
-        """
-        # Reset pose
+    # Reset service
+    def handle_reset_odometry(self, request, response):
         self.x = 0.0
         self.y = 0.0
         self.theta = 0.0
-
-        # Reset timing reference
+        # Don't reset prev_* so we don't get a giant jump; let next callback handle it
         self.last_time = self.get_clock().now()
-
         self.get_logger().info("Odometry reset via service 'reset_odometry'")
-
         response.success = True
         response.message = "Odometry reset"
         return response
 
-    # ------------------- Main Odom Update Loop -------------------
-    def update(self):
-        # Compute current velocity
-        current_time = self.get_clock().now()
-        dt = (current_time - self.last_time).nanoseconds / 1e9
-        self.last_time = current_time
+    # Main encoder callback → compute odom and publish
+    def angle_callback(self, msg: JointState):
+        # Expect [left_wheel_degs, right_wheel_degs]
+        if len(msg.position) < 2:
+            self.get_logger().warn("scaled_wheel_angles has fewer than 2 positions")
+            return
 
-        v = (self.x - self.last_x) / dt if dt > 0 else 0.0
-        omega = (self.theta - self.last_theta) / dt if dt > 0 else 0.0
+        left_deg = float(msg.position[0])
+        right_deg = float(msg.position[1])
 
-        # Publish Odometry
+        now = self.get_clock().now()
+
+        # First message: just initialize state
+        if self.prev_left_deg is None:
+            self.prev_left_deg = left_deg
+            self.prev_right_deg = right_deg
+            self.last_time = now
+            return
+
+        # Time delta
+        dt = (now - self.last_time).nanoseconds / 1e9
+        if dt <= 0.0:
+            dt = 1e-6  # avoid division by zero
+
+        # Wheel angle deltas in degrees, unwrapped
+        d_left_deg = self.unwrap_delta_deg(left_deg, self.prev_left_deg)
+        d_right_deg = self.unwrap_delta_deg(right_deg, self.prev_right_deg)
+
+        self.prev_left_deg = left_deg
+        self.prev_right_deg = right_deg
+        self.last_time = now
+
+        # Convert to radians
+        d_left_rad = math.radians(d_left_deg)
+        d_right_rad = math.radians(d_right_deg)
+
+        # Convert to linear distances for each wheel
+        d_left = d_left_rad * self.wheel_radius
+        d_right = d_right_rad * self.wheel_radius
+
+        # Diff-drive kinematics
+        ds = (d_right + d_left) / 2.0
+        dtheta = (d_right - d_left) / self.wheel_base
+
+        # Update pose (using current heading + half rotation for better accuracy)
+        theta_mid = self.theta + dtheta / 2.0
+        self.x += ds * math.cos(theta_mid)
+        self.y += ds * math.sin(theta_mid)
+        self.theta = self.normalize_angle(self.theta + dtheta)
+
+        # Velocities
+        v = ds / dt
+        omega = dtheta / dt
+
+        # Publish odom + tf
+        self.publish_odom(now, v, omega)
+
+    def publish_odom(self, stamp, v, omega):
+        # Odometry msg
         odom = Odometry()
-        odom.header.stamp = current_time.to_msg()
+        odom.header.stamp = stamp.to_msg()
         odom.header.frame_id = "odom"
         odom.child_frame_id = "base_link"
 
@@ -115,6 +152,7 @@ class OdomNode(Node):
         odom.pose.pose.position.y = self.y
         odom.pose.pose.position.z = 0.0
 
+        # Yaw-only orientation
         odom.pose.pose.orientation.z = math.sin(self.theta / 2.0)
         odom.pose.pose.orientation.w = math.cos(self.theta / 2.0)
 
@@ -123,76 +161,9 @@ class OdomNode(Node):
 
         self.odom_pub.publish(odom)
 
-        # Publish odom → base_link TF
+        # TF
         t = TransformStamped()
-        t.header.stamp = current_time.to_msg()
-        t.header.frame_id = "odom"
-        t.child_frame_id = "base_link"
-
-        t.transform.translation.x = self.x
-        t.transform.translation.y = self.y
-        t.transform.translation.z = 0.0
-
-        t.transform.rotation.z = math.sin(self.theta / 2.0)
-        t.transform.rotation.w = math.cos(self.theta / 2.0)
-
-        self.tf_broadcaster.sendTransform(t)
-
-    # Update the odometry calculation logic
-    def angle_callback(self, msg):
-        left_angle = msg.position[0]
-        right_angle = msg.position[1]
-
-        # Calculate odometry based on wheel angles
-        dt = (self.get_clock().now() - self.last_time).nanoseconds / 1e9
-        self.last_time = self.get_clock().now()
-
-        # Calculate the change in position and orientation
-        delta_left = left_angle * self.wheel_radius
-        delta_right = right_angle * self.wheel_radius
-        delta_theta = (delta_right - delta_left) / self.wheel_base
-
-        # Update the robot's pose
-        self.theta += delta_theta
-        self.x += (delta_left + delta_right) / 2 * math.cos(self.theta)
-        self.y += (delta_left + delta_right) / 2 * math.sin(self.theta)
-
-        # Normalize the angle to the range [-pi, pi]
-        self.theta = self.normalize_angle(self.theta)
-
-        # Publish odometry
-        self.publish_odometry()
-
-    def publish_odometry(self):
-        # Compute current velocity
-        current_time = self.get_clock().now()
-        dt = (current_time - self.last_time).nanoseconds / 1e9
-        self.last_time = current_time
-
-        v = (self.x - self.last_x) / dt if dt > 0 else 0.0
-        omega = (self.theta - self.last_theta) / dt if dt > 0 else 0.0
-
-        # Publish Odometry
-        odom = Odometry()
-        odom.header.stamp = current_time.to_msg()
-        odom.header.frame_id = "odom"
-        odom.child_frame_id = "base_link"
-
-        odom.pose.pose.position.x = self.x
-        odom.pose.pose.position.y = self.y
-        odom.pose.pose.position.z = 0.0
-
-        odom.pose.pose.orientation.z = math.sin(self.theta / 2.0)
-        odom.pose.pose.orientation.w = math.cos(self.theta / 2.0)
-
-        odom.twist.twist.linear.x = v
-        odom.twist.twist.angular.z = omega
-
-        self.odom_pub.publish(odom)
-
-        # Publish odom → base_link TF
-        t = TransformStamped()
-        t.header.stamp = current_time.to_msg()
+        t.header.stamp = stamp.to_msg()
         t.header.frame_id = "odom"
         t.child_frame_id = "base_link"
 

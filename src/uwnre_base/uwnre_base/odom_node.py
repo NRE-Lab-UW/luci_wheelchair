@@ -1,4 +1,3 @@
-asdf
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
@@ -7,6 +6,7 @@ from std_msgs.msg import Int32
 import tf2_ros
 import math
 import time
+from std_srvs.srv import Trigger
 
 
 class OdomNode(Node):
@@ -51,6 +51,13 @@ class OdomNode(Node):
         # TF broadcaster
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
 
+        # Service to reset odometry: call 'reset_odometry' (std_srvs/Trigger)
+        # The service clears x,y,theta and aligns previous tick samples so
+        # no large jump occurs after reset.
+        self.reset_service = self.create_service(
+            Trigger, "reset_odometry", self.handle_reset_odometry
+        )
+
         # Timer for odom publishing
         dt = 1.0 / self.get_parameter("publish_rate").value
         self.timer = self.create_timer(dt, self.update)
@@ -65,6 +72,29 @@ class OdomNode(Node):
 
     def right_callback(self, msg: Int32):
         self.right_ticks = msg.data
+
+    def handle_reset_odometry(self, request, response):
+        """Service callback to reset odometry pose/state.
+
+        Uses std_srvs/Trigger: no request data. Returns success True and a message.
+        """
+        # Reset pose
+        self.x = 0.0
+        self.y = 0.0
+        self.theta = 0.0
+
+        # Reset previous tick references to current values to avoid jump
+        self.left_ticks_prev = self.left_ticks
+        self.right_ticks_prev = self.right_ticks
+
+        # Reset timing reference
+        self.last_time = self.get_clock().now()
+
+        self.get_logger().info("Odometry reset via service 'reset_odometry'")
+
+        response.success = True
+        response.message = "Odometry reset"
+        return response
 
     # ------------------- Main Odom Update Loop -------------------
     def update(self):

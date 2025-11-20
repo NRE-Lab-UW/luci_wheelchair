@@ -28,6 +28,7 @@ setup(
         'console_scripts': [
             'test_cmd_vel_pub = uwnre_calib.test_cmd_vel_pub:main',
             'joystick_speed_calib = uwnre_calib.joystick_speed_calib:main',
+            'direct_joystick_odom_logger = uwnre_calib.direct_joystick_odom_logger:main',
         ],
     },
 )

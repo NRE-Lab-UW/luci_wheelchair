@@ -20,6 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'odom_node = uwnre_base.odom:main',
+            'twist2joy_node = uwnre_base.twist2joy:main',
         ],
     },
 )

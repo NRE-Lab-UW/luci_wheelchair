@@ -7,6 +7,8 @@ import tf2_ros
 import math
 import time
 from std_srvs.srv import Trigger
+from sensor_msgs.msg import JointState
+from std_msgs.msg import Float64
 
 
 class OdomNode(Node):
@@ -24,25 +26,24 @@ class OdomNode(Node):
         self.wheel_base = self.get_parameter("wheel_base").value
         self.ticks_per_rev = self.get_parameter("ticks_per_rev").value
 
-        # Encoder state
-        self.left_ticks_prev = None
-        self.right_ticks_prev = None
-
-        self.left_ticks = 0
-        self.right_ticks = 0
-
         # Robot pose state
         self.x = 0.0
         self.y = 0.0
         self.theta = 0.0
 
-        # Subscribers for encoder ticks
-        # TODO - Update subscription
-        self.left_sub = self.create_subscription(
-            Int32, "left_wheel_ticks", self.left_callback, 10
-        )
-        self.right_sub = self.create_subscription(
-            Int32, "right_wheel_ticks", self.right_callback, 10
+        # Previous angles for left and right wheels
+        self.prev_left_angle = 0.0
+        self.prev_right_angle = 0.0
+
+        # Initialize last_x and last_theta to avoid AttributeError
+        self.last_x = 0.0
+        self.last_theta = 0.0
+
+
+
+        # Subscriber for scaled wheel angles
+        self.angle_sub = self.create_subscription(
+            JointState, "scaled_wheel_angles", self.angle_callback, 10
         )
 
         # Publisher for odom
@@ -66,13 +67,15 @@ class OdomNode(Node):
 
         self.get_logger().info("uwnre odom_node started")
 
-    # ------------------- Encoder callbacks -------------------
-    def left_callback(self, msg: Int32):
-        self.left_ticks = msg.data
+    # Function to normalize angles to the range [-pi, pi]
+    def normalize_angle(self, angle):
+        while angle > math.pi:
+            angle -= 2 * math.pi
+        while angle < -math.pi:
+            angle += 2 * math.pi
+        return angle
 
-    def right_callback(self, msg: Int32):
-        self.right_ticks = msg.data
-
+    # ------------------- Service to reset odometry -------------------
     def handle_reset_odometry(self, request, response):
         """Service callback to reset odometry pose/state.
 
@@ -82,10 +85,6 @@ class OdomNode(Node):
         self.x = 0.0
         self.y = 0.0
         self.theta = 0.0
-
-        # Reset previous tick references to current values to avoid jump
-        self.left_ticks_prev = self.left_ticks
-        self.right_ticks_prev = self.right_ticks
 
         # Reset timing reference
         self.last_time = self.get_clock().now()
@@ -98,41 +97,80 @@ class OdomNode(Node):
 
     # ------------------- Main Odom Update Loop -------------------
     def update(self):
-        if self.left_ticks_prev is None or self.right_ticks_prev is None:
-            self.left_ticks_prev = self.left_ticks
-            self.right_ticks_prev = self.right_ticks
-            return
-
-        # Compute tick deltas
-        delta_left = self.left_ticks - self.left_ticks_prev
-        delta_right = self.right_ticks - self.right_ticks_prev
-
-        self.left_ticks_prev = self.left_ticks
-        self.right_ticks_prev = self.right_ticks
-
-        # Convert ticks → meters
-        meters_per_tick = (2.0 * math.pi * self.wheel_radius) / self.ticks_per_rev
-        dl = delta_left * meters_per_tick
-        dr = delta_right * meters_per_tick
-
-        # Compute linear and angular displacement
-        dc = (dl + dr) / 2.0
-        dtheta = (dr - dl) / self.wheel_base
-
-        # Update pose
-        self.theta += dtheta
-        self.theta = math.atan2(math.sin(self.theta), math.cos(self.theta))  # normalize
-
-        self.x += dc * math.cos(self.theta)
-        self.y += dc * math.sin(self.theta)
-
         # Compute current velocity
         current_time = self.get_clock().now()
         dt = (current_time - self.last_time).nanoseconds / 1e9
         self.last_time = current_time
 
-        v = dc / dt if dt > 0 else 0.0
-        omega = dtheta / dt if dt > 0 else 0.0
+        v = (self.x - self.last_x) / dt if dt > 0 else 0.0
+        omega = (self.theta - self.last_theta) / dt if dt > 0 else 0.0
+
+        # Publish Odometry
+        odom = Odometry()
+        odom.header.stamp = current_time.to_msg()
+        odom.header.frame_id = "odom"
+        odom.child_frame_id = "base_link"
+
+        odom.pose.pose.position.x = self.x
+        odom.pose.pose.position.y = self.y
+        odom.pose.pose.position.z = 0.0
+
+        odom.pose.pose.orientation.z = math.sin(self.theta / 2.0)
+        odom.pose.pose.orientation.w = math.cos(self.theta / 2.0)
+
+        odom.twist.twist.linear.x = v
+        odom.twist.twist.angular.z = omega
+
+        self.odom_pub.publish(odom)
+
+        # Publish odom → base_link TF
+        t = TransformStamped()
+        t.header.stamp = current_time.to_msg()
+        t.header.frame_id = "odom"
+        t.child_frame_id = "base_link"
+
+        t.transform.translation.x = self.x
+        t.transform.translation.y = self.y
+        t.transform.translation.z = 0.0
+
+        t.transform.rotation.z = math.sin(self.theta / 2.0)
+        t.transform.rotation.w = math.cos(self.theta / 2.0)
+
+        self.tf_broadcaster.sendTransform(t)
+
+    # Update the odometry calculation logic
+    def angle_callback(self, msg):
+        left_angle = msg.position[0]
+        right_angle = msg.position[1]
+
+        # Calculate odometry based on wheel angles
+        dt = (self.get_clock().now() - self.last_time).nanoseconds / 1e9
+        self.last_time = self.get_clock().now()
+
+        # Calculate the change in position and orientation
+        delta_left = left_angle * self.wheel_radius
+        delta_right = right_angle * self.wheel_radius
+        delta_theta = (delta_right - delta_left) / self.wheel_base
+
+        # Update the robot's pose
+        self.theta += delta_theta
+        self.x += (delta_left + delta_right) / 2 * math.cos(self.theta)
+        self.y += (delta_left + delta_right) / 2 * math.sin(self.theta)
+
+        # Normalize the angle to the range [-pi, pi]
+        self.theta = self.normalize_angle(self.theta)
+
+        # Publish odometry
+        self.publish_odometry()
+
+    def publish_odometry(self):
+        # Compute current velocity
+        current_time = self.get_clock().now()
+        dt = (current_time - self.last_time).nanoseconds / 1e9
+        self.last_time = current_time
+
+        v = (self.x - self.last_x) / dt if dt > 0 else 0.0
+        omega = (self.theta - self.last_theta) / dt if dt > 0 else 0.0
 
         # Publish Odometry
         odom = Odometry()

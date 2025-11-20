@@ -1,4 +1,6 @@
 from setuptools import find_packages, setup
+import glob
+import os
 
 package_name = 'uwnre_base'
 
@@ -20,7 +22,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'odom_node = uwnre_base.odom:main',
+            'odom_node = uwnre_base.odom_node:main',
             'twist2joy_node = uwnre_base.twist2joy:main',
             'wheel_angle_scaler = uwnre_base.wheel_angle_scaler:main',
         ],

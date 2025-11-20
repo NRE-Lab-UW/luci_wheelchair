@@ -2,10 +2,9 @@
 
 import rclpy
 from rclpy.node import Node
-import math
 
 from sensor_msgs.msg import JointState
-from luci_messages.msg import LuciEncoders  
+from luci_messages.msg import LuciEncoders
 
 
 class WheelAngleScaler(Node):
@@ -13,7 +12,8 @@ class WheelAngleScaler(Node):
         super().__init__('wheel_angle_scaler', namespace='uwnre')
 
         # Scale factor derived from your data
-        self.scale = 2.37  # sensor_deg = scale * wheel_deg
+        # sensor_deg = scale * wheel_deg
+        self.scale = 2.37
 
         # For unwrapping
         self.prev_left_raw = None
@@ -67,8 +67,12 @@ class WheelAngleScaler(Node):
             return
 
         # Unwrap raw sensor angles
-        d_left = self.unwrap(left_raw, self.prev_left_raw)
+        d_left_raw = self.unwrap(left_raw, self.prev_left_raw)
         d_right = self.unwrap(right_raw, self.prev_right_raw)
+
+        # 🔥 Fix: left encoder decreases when moving forward,
+        # so flip its sign so forward motion makes it increase.
+        d_left = -d_left_raw
 
         self.left_unwrapped += d_left
         self.right_unwrapped += d_right
@@ -80,7 +84,7 @@ class WheelAngleScaler(Node):
         left_wheel_deg = self.left_unwrapped / self.scale
         right_wheel_deg = self.right_unwrapped / self.scale
 
-        # Publish JointState
+        # Publish JointState (still in degrees as requested)
         js = JointState()
         js.header.stamp = self.get_clock().now().to_msg()
         js.name = ['left_wheel_degs', 'right_wheel_degs']

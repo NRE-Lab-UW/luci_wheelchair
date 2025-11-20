@@ -15,9 +15,9 @@ class OdomNode(Node):
 
         # ---- Declare parameters ----
         # TODO: Find the correct values and update in the launch file
-        self.declare_parameter("wheel_radius", 0.15)          # meters
+        self.declare_parameter("wheel_radius", 0.16)          # meters
         self.declare_parameter("wheel_base", 0.60)            # meters
-        self.declare_parameter("ticks_per_rev", 2048)
+        self.declare_parameter("ticks_per_rev", 4096)
         self.declare_parameter("publish_rate", 25.0)          # Hz
 
         self.wheel_radius = self.get_parameter("wheel_radius").value

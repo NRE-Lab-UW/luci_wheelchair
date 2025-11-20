@@ -12,9 +12,9 @@ def generate_launch_description():
             output="screen",
             parameters=[{
                 # Tune these to your chair:
-                "wheel_radius": 0.15,      # meters
+                "wheel_radius": 0.16,      # meters
                 "wheel_base": 0.60,        # meters
-                "ticks_per_rev": 2048,
+                "ticks_per_rev": 4096,
                 "publish_rate": 25.0,
             }],
         ),

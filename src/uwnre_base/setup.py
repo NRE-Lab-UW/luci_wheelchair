@@ -22,6 +22,7 @@ setup(
         'console_scripts': [
             'odom_node = uwnre_base.odom:main',
             'twist2joy_node = uwnre_base.twist2joy:main',
+            'wheel_angle_scaler = uwnre_base.wheel_angle_scaler:main',
         ],
     },
 )

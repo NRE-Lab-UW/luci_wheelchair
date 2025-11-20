@@ -2,7 +2,8 @@
 
 ## Running the Docker Container
 > [!NOTE]  
-> These steps are to be used on Linux (Ubuntu), but docker will NOT work on WSL2 on Windows
+> These steps are to be used on Linux (Ubuntu)
+> Install Docker Desktop for Windows to use in WSL2
 
 1. Clone this repository
 2. `cd` into the root of this repo

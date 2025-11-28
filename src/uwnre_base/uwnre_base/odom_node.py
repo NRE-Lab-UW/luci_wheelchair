@@ -173,7 +173,7 @@ class OdomNode(Node):
 
         t.transform.rotation.z = math.sin(self.theta / 2.0)
         t.transform.rotation.w = math.cos(self.theta / 2.0)
-
+    
         self.tf_broadcaster.sendTransform(t)
 
 

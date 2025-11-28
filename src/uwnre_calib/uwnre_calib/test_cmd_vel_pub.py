@@ -12,7 +12,7 @@ class TestCmdVelPublisher(Node):
         # ----- Parameters -----
         # Topic to publish to (should match twist2joy's input)
         self.declare_parameter("cmd_vel_topic", "/uwnre/cmd_vel")
-        self.declare_parameter("linear_x", 0.2)      # m/s
+        self.declare_parameter("linear_x", 1.5)      # m/s
         self.declare_parameter("angular_z", 0.0)     # rad/s
         self.declare_parameter("duration", 0.0)      # seconds; <=0 -> run forever
         self.declare_parameter("rate", 10.0)         # Hz

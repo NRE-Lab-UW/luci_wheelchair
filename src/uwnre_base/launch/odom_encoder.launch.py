@@ -29,4 +29,18 @@ def generate_launch_description():
             output="screen",
             parameters=[],
         ),
+        Node(
+            package="uwnre_base",
+            executable="twist2joy_node",
+            name="twist2joy_node",
+            output="screen",
+            parameters=[],
+        ),
+        Node(
+            package="uwnre_calib",
+            executable="test_cmd_vel_pub",
+            name="test_cmd_vel_pub",
+            output="screen",
+            parameters=[],
+        ),
     ])

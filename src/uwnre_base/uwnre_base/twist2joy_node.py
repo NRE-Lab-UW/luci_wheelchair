@@ -16,8 +16,8 @@ JS_FRONT_LEFT = 1
 JS_FRONT_RIGHT = 2
 JS_LEFT = 3
 JS_RIGHT = 4
-JS_BACK_LEFT = 5
-JS_BACK_RIGHT = 6
+JS_BACK_RIGHT = 5
+JS_BACK_LEFT = 6
 JS_BACK = 7
 JS_ORIGIN = 8
 
@@ -33,9 +33,9 @@ class TwistToJoystickNode(Node):
         # Max speeds used for scaling Twist -> joystick [-100, 100]
         # TODO: Determine what the max values are
         self.declare_parameter("cmd_vel_topic", "/uwnre/cmd_vel")
-        self.declare_parameter("max_forward_speed", 0.8)      # m/s
-        self.declare_parameter("max_reverse_speed", 0.5)      # m/s (magnitude)
-        self.declare_parameter("max_angular_speed", 1.2)      # rad/s
+        self.declare_parameter("max_forward_speed", 10)      # m/s
+        self.declare_parameter("max_reverse_speed", -10)      # m/s (magnitude)
+        self.declare_parameter("max_angular_speed", 10)      # rad/s
         self.declare_parameter("publish_rate", 20.0)          # Hz
         self.declare_parameter("deadman_timeout", 0.5)        # seconds
 
@@ -128,6 +128,7 @@ class TwistToJoystickNode(Node):
 
         # Forward/back mapping
         fb = self.map_linear_to_joystick(v)
+        print("FORWARD BACK:", fb)
         lr = self.map_angular_to_joystick(omega)
 
         joy_msg.forward_back = fb

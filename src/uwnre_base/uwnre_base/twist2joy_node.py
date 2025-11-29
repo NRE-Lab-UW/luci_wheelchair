@@ -81,6 +81,8 @@ class TwistToJoystickNode(Node):
             f"twist2joy_node started. Listening on {self.cmd_vel_topic}, "
             "publishing to /luci/remote_joystick"
         )
+        
+        self.get_logger().info("testing bruh")
 
     # ----- Service helpers -----
     def set_auto_service(self):
@@ -128,10 +130,11 @@ class TwistToJoystickNode(Node):
 
         # Forward/back mapping
         fb = self.map_linear_to_joystick(v)
-        print("FORWARD BACK:", fb)
+        fb = 10
+        self.get_logger().info(f"FORWARD BACK: {fb}")
         lr = self.map_angular_to_joystick(omega)
 
-        joy_msg.forward_back = fb
+        joy_msg.forward_back = 10
         joy_msg.left_right = lr
         joy_msg.joystick_zone = self.compute_zone(fb, lr)
 

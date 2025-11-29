@@ -25,6 +25,7 @@ setup(
             'odom_node = uwnre_base.odom_node:main',
             'twist2joy_node = uwnre_base.twist2joy:main',
             'wheel_angle_scaler = uwnre_base.wheel_angle_scaler:main',
+            'joystick_odom_logger = uwnre_base.joystick_odom_logger:main',
         ],
     },
 )

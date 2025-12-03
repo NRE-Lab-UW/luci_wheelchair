@@ -9,7 +9,7 @@
 1. Clone this repository
 2. `cd` into the root of this repo
 3. Run `source ws_aliases.sh` (or add this line to your shell profile so every new terminal loads the aliases automatically)
-4. Run `ws-up` to start the image FROM THE ROOT OF THE REPO `/luci_wheelchair`
+4. Run `ws-up` to start the image FROM THE ROOT OF THE REPO
 5. Run `ws-exec` to open an interactive shell into the container, you should be able to run this from anywhere on your system
 
 To stop using the shell, run `exit` while inside the container, and `ws-down` to completely stop and remove the container

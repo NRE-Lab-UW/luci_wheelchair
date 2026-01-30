@@ -43,3 +43,7 @@ Relevant topics:
 
 - Containers are started with a fixed name (`luci_ros2_sdk`). If you already have a running container for `luci-ros2-sdk` with a different name, `ws-exec` will still find it and attach.
 - Add `source /path/to/ws_aliases.sh` to your `~/.bashrc` or `~/.zshrc` to avoid sourcing manually in every terminal.
+
+
+TODO: Test launch file and write here how to run it - might need to move them into packages?
+colcon build
